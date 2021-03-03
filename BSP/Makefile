@@ -50,6 +50,7 @@ endif
 ifeq ($(CFG_AML_WIFI_DEVICE_UWE5622),y)
 export CONFIG_WCN_SDIO = y
 #export CONFIG_WCN_USB = y
+# export CONFIG_WCN_GNSS = y
 ccflags-y += -DCONFIG_CHECK_DRIVER_BY_CHIPID
 #ccflags-y += -DCONFIG_UWE5622
 BSP_CHIP_ID := uwe5621
@@ -68,6 +69,7 @@ endif
 ifeq ($(CONFIG_RK_WIFI_DEVICE_UWE5622),y)
 export CONFIG_WCN_SDIO = y
 #export CONFIG_WCN_USB = y
+# export CONFIG_WCN_GNSS = y
 #ccflags-y += -DCONFIG_CHECK_DRIVER_BY_CHIPID
 ccflags-y += -DCONFIG_UWE5622
 BSP_CHIP_ID := uwe5622
@@ -77,6 +79,7 @@ endif
 ifeq ($(CONFIG_AW_WIFI_DEVICE_UWE5622),y)
 export CONFIG_WCN_SDIO = y
 #export CONFIG_WCN_USB = y
+# export CONFIG_WCN_GNSS = y
 #ccflags-y += -DCONFIG_CHECK_DRIVER_BY_CHIPID
 ccflags-y += -DCONFIG_UWE5622
 BSP_CHIP_ID := uwe5622
@@ -97,6 +100,9 @@ endif
 ifneq ($(UNISOC_DBG_PATH_CONFIG),)
 ccflags-y += -DCONFIG_CUSTOMIZE_UNISOC_DBG_PATH=\"$(UNISOC_DBG_PATH_CONFIG)\"
 endif
+ifneq ($(UNISOC_SDIO_IRQ_TYPE_CONFIG),)
+ccflags-y += -DCONFIG_CUSTOMIZE_SDIO_IRQ_TYPE=$(UNISOC_SDIO_IRQ_TYPE_CONFIG)
+endif
 
 #### add cflag ######
 ifeq ($(CONFIG_WCN_SDIO),y)
@@ -114,6 +120,11 @@ endif
 ifeq ($(CONFIG_WCN_USB),y)
 ccflags-y += -DCONFIG_WCN_USB
 endif
+
+ifeq ($(CONFIG_WCN_GNSS),y)
+ccflags-y += -DCONFIG_WCN_GNSS
+endif
+
 ccflags-y += -DCONFIG_WCN_BOOT
 ccflags-y += -DCONFIG_WCN_UTILS
 
@@ -147,7 +158,7 @@ ccflags-y += -DCONFIG_SDIO_TX_ADMA_MODE
 ccflags-y += -DCONFIG_SDIO_RX_ADMA_MODE
 ccflags-y += -DCONFIG_SDIO_INBAND_INT
 #ccflags-y += -DCONFIG_SDIO_INBAND_POLLING
-#ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
+ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
 #ccflags-y += -DCONFIG_SDIO_PWRSEQ
 endif
 
@@ -176,7 +187,7 @@ ccflags-y += -DCONFIG_SDIO_TX_ADMA_MODE
 ccflags-y += -DCONFIG_SDIO_RX_ADMA_MODE
 ccflags-y += -DCONFIG_SDIO_INBAND_INT
 #ccflags-y += -DCONFIG_SDIO_INBAND_POLLING
-#ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
+ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
 #ccflags-y += -DCONFIG_SDIO_PWRSEQ
 
 all_dependencies += install
@@ -228,6 +239,7 @@ ccflags-y += -DCONFIG_BT_WAKE_HOST_EN
 #ccflags-y += -DCONFIG_SDIO_TX_ADMA_MODE
 #ccflags-y += -DCONFIG_SDIO_RX_ADMA_MODE
 ccflags-y += -DCONFIG_SDIO_INBAND_INT
+#ccflags-y += -DCONFIG_CUSTOMIZE_SDIO_IRQ_TYPE=2
 #ccflags-y += -DCONFIG_SDIO_INBAND_POLLING
 ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
 #ccflags-y += -DCONFIG_SDIO_PWRSEQ
@@ -258,6 +270,7 @@ endif
 #ccflags-y += -DCONFIG_SDIO_RX_ADMA_MODE
 #ccflags-y += -DCONFIG_SDIO_INBAND_INT
 #ccflags-y += -DCONFIG_SDIO_INBAND_POLLING
+ccflags-y += -DCONFIG_CUSTOMIZE_SDIO_IRQ_TYPE=3
 ccflags-y += -DCONFIG_SDIO_BLKSIZE_512
 #ccflags-y += -DCONFIG_SDIO_PWRSEQ
 
@@ -381,6 +394,12 @@ $(MODULE_NAME)-$(CONFIG_WCN_SDIO) += \
 		    sleep/slp_sdio.o \
 		    sleep/slp_test.o \
 		    platform/mem_pd_mgr.o
+
+$(MODULE_NAME)-$(CONFIG_WCN_GNSS) += \
+		    platform/gnss/gnss_common_ctl.o \
+		    platform/gnss/gnss_pmnotify_ctl.o \
+		    platform/gnss/gnss_dbg.o \
+		    platform/gnss/gnss_dump.o \
 
 # wcn module bind verify
 ifeq ($(CONFIG_AW_BIND_VERIFY),y)

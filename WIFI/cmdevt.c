@@ -257,7 +257,11 @@ int sprdwl_cmd_init(void)
 	cmd->wake_lock = wakeup_source_register(sprdwl_dev,
 						"Wi-Fi_cmd_wakelock");
 #else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 	cmd->wake_lock = wakeup_source_register("Wi-Fi_cmd_wakelock");
+#else
+	cmd->wake_lock = wakeup_source_register(sprdwl_dev, "Wi-Fi_cmd_wakelock");
+#endif
 #endif
 	if (!cmd->wake_lock) {
 		wl_err("%s wakeup source register error.\n", __func__);
@@ -288,7 +292,7 @@ static void sprdwl_cmd_set(struct sprdwl_cmd_hdr *hdr)
 	ktime_t kt;
 
 	kt = ktime_get();
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 	msec = (u32)(div_u64(kt, NSEC_PER_MSEC));
 #else
 	msec = (u32)(div_u64(kt.tv64, NSEC_PER_MSEC));
@@ -876,16 +880,15 @@ int sprdwl_get_fw_info(struct sprdwl_priv *priv)
 	u8 bytes_allign = 1;
 #define OTT_UWE_OFFSET_ENABLE 1
 #endif
-#ifdef DISABLE_CREDIT_VIA_DATA
 	u8 credit_via_data = 1;
-#endif
+
 	tlv_len = sizeof(*tlv) + 1;
 #ifdef OTT_UWE
 	tlv_len += (sizeof(*tlv) + 1);
 #endif
-#ifdef DISABLE_CREDIT_VIA_DATA
-	tlv_len += (sizeof(*tlv) + 1);
-#endif
+
+	if (priv->hw_type == SPRDWL_HW_USB)
+		tlv_len += (sizeof(*tlv) + 1);
 
 	memset(r_buf, 0, r_len);
 	msg = sprdwl_cmd_getbuf(priv, tlv_len, SPRDWL_MODE_NONE,
@@ -925,12 +928,13 @@ int sprdwl_get_fw_info(struct sprdwl_priv *priv)
 			    sizeof(bytes_allign), &bytes_allign);
 	offset += (sizeof(*tlv) + 1);
 #endif
-#ifdef DISABLE_CREDIT_VIA_DATA
-	/*to notify CP2 data credit disable*/
-	sprdwl_set_tlv_elmt((u8 *)(msg->data + offset), NOTIFY_CREDIT_VIA_RX_DATA,
-			    sizeof(credit_via_data), &credit_via_data);
-	offset += (sizeof(*tlv) + 1);
-#endif
+	if (priv->hw_type == SPRDWL_HW_USB) {
+		/*to notify CP2 data credit disable*/
+		sprdwl_set_tlv_elmt((u8 *)(msg->data + offset), NOTIFY_CREDIT_VIA_RX_DATA,
+				sizeof(credit_via_data), &credit_via_data);
+		offset += (sizeof(*tlv) + 1);
+	}
+
 	ret = sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, r_buf, &r_len);
 	if (!ret && r_len) {
 #if defined COMPAT_SAMPILE_CODE
@@ -2892,19 +2896,16 @@ void sprdwl_event_disconnect(struct sprdwl_vif *vif, u8 *data, u16 len)
 	u16 reason_code;
 
 	memcpy(&reason_code, data, sizeof(reason_code));
+	wl_info("%s reason code = %d\n", __func__, reason_code);
 #ifdef SYNC_DISCONNECT
-	/*Report disconnection on version > 4.9.60, even though disconnect
-	 is from wpas, otherwise it returns -EALREADY on next connect.*/
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 60)
 	if (atomic_read(&vif->sync_disconnect_event)) {
 		vif->disconnect_event_code = reason_code;
 		atomic_set(&vif->sync_disconnect_event, 0);
 		wake_up(&vif->disconnect_wq);
-		wl_err("%s reason code = %d\n", __func__, reason_code);
 	} else
 #endif
-#endif
-	sprdwl_report_disconnection(vif, reason_code);
+		sprdwl_report_disconnection(vif, reason_code);
+
 }
 
 void sprdwl_event_mic_failure(struct sprdwl_vif *vif, u8 *data, u16 len)

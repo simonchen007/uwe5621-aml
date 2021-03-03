@@ -202,11 +202,7 @@ void sdiohal_lock_tx_ws(void)
 	if (atomic_read(&p_data->tx_wake_flag) > 1)
 		return;
 
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_stay_awake(&p_data->tx_wl.ws);
-#else
-	__pm_stay_awake(&p_data->tx_ws);
-#endif
+	__pm_stay_awake(p_data->tx_ws);
 }
 
 void sdiohal_unlock_tx_ws(void)
@@ -217,11 +213,7 @@ void sdiohal_unlock_tx_ws(void)
 	if (atomic_read(&p_data->tx_wake_flag))
 		return;
 
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_relax(&p_data->tx_wl.ws);
-#else
-	__pm_relax(&p_data->tx_ws);
-#endif
+	__pm_relax(p_data->tx_ws);
 }
 
 void sdiohal_lock_rx_ws(void)
@@ -233,11 +225,7 @@ void sdiohal_lock_rx_ws(void)
 		return;
 
 	atomic_set(&p_data->rx_wake_flag, 1);
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_stay_awake(&p_data->rx_wl.ws);
-#else
-	__pm_stay_awake(&p_data->rx_ws);
-#endif
+	__pm_stay_awake(p_data->rx_ws);
 }
 
 void sdiohal_unlock_rx_ws(void)
@@ -248,66 +236,43 @@ void sdiohal_unlock_rx_ws(void)
 		return;
 
 	atomic_set(&p_data->rx_wake_flag, 0);
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_relax(&p_data->rx_wl.ws);
-#else
-	__pm_relax(&p_data->rx_ws);
-#endif
+	__pm_relax(p_data->rx_ws);
 }
 
 void sdiohal_lock_scan_ws(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
-
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_stay_awake(&p_data->scan_wl.ws);
-#else
-	__pm_stay_awake(&p_data->scan_ws);
-#endif
+	__pm_stay_awake(p_data->scan_ws);
 }
 
 void sdiohal_unlock_scan_ws(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
-
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	__pm_relax(&p_data->scan_wl.ws);
-#else
-	__pm_relax(&p_data->scan_ws);
-#endif
+	__pm_relax(p_data->scan_ws);
 }
 
 void sdiohal_wakelock_init(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
-
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	wake_lock_init(&p_data->tx_wl, WAKE_LOCK_SUSPEND,
-		       "sdiohal_tx_wakelock");
-	wake_lock_init(&p_data->rx_wl, WAKE_LOCK_SUSPEND,
-		       "sdiohal_rx_wakelock");
-	wake_lock_init(&p_data->scan_wl, WAKE_LOCK_SUSPEND,
-		       "sdiohal_scan_wakelock");
-#else
-	wakeup_source_init(&p_data->tx_ws, "sdiohal_tx_wakelock");
-	wakeup_source_init(&p_data->rx_ws, "sdiohal_rx_wakelock");
-	wakeup_source_init(&p_data->scan_ws, "sdiohal_scan_wakelock");
-#endif
+	/*wakeup_source pointer*/
+	p_data->tx_ws = wakeup_source_create("sdiohal_tx_wakelock");
+	wakeup_source_add(p_data->tx_ws);
+	p_data->rx_ws = wakeup_source_create("sdiohal_rx_wakelock");
+	wakeup_source_add(p_data->rx_ws);
+	p_data->scan_ws = wakeup_source_create("sdiohal_scan_wakelock");
+	wakeup_source_add(p_data->scan_ws);
 }
 
 void sdiohal_wakelock_deinit(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
-
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	wake_lock_destroy(&p_data->tx_wl);
-	wake_lock_destroy(&p_data->rx_wl);
-	wake_lock_destroy(&p_data->scan_wl);
-#else
-	wakeup_source_trash(&p_data->tx_ws);
-	wakeup_source_trash(&p_data->rx_ws);
-	wakeup_source_trash(&p_data->scan_ws);
-#endif
+	/*wakeup_source pointer*/
+	wakeup_source_remove(p_data->tx_ws);
+	wakeup_source_destroy(p_data->tx_ws);
+	wakeup_source_remove(p_data->rx_ws);
+	wakeup_source_destroy(p_data->rx_ws);
+	wakeup_source_remove(p_data->scan_ws);
+	wakeup_source_destroy(p_data->scan_ws);
 }
 
 /* for callback */
@@ -947,18 +912,27 @@ refill:
 #else
 		order = SDIOHAL_FRAG_PAGE_MAX_ORDER_32_BIT;
 #endif
+		/*GFP_KERNEL allow sleep, so not in interrupt; sdma changed,adma not*/
+		if (gfp_mask & GFP_KERNEL)
+			local_irq_restore(flags);
 		for (; ;) {
 			gfp_t gfp = gfp_mask;
 
 			if (order)
-				gfp |= __GFP_COMP | __GFP_NOWARN;
+				gfp |= __GFP_COMP;
 			/* alloc_pages will initialize count to 1. */
 			frag_ctl->frag.page = alloc_pages(gfp, order);
 			if (likely(frag_ctl->frag.page))
 				break;
-			if (--order < 0)
-				goto fail;
+			if (--order < 0) {
+				if(gfp_mask & GFP_KERNEL)
+					goto fail1;
+				else
+					goto fail;
+			}
 		}
+		if (gfp_mask & GFP_KERNEL)
+			local_irq_save(flags);
 		frag_ctl->frag.size = PAGE_SIZE << order;
 		if (frag_ctl->frag.size < fragsz) {
 			sdiohal_info("BITS_PER_LONG=%d,PAGE_SIZE=%ld,order=%d\n",
@@ -1034,6 +1008,7 @@ refill:
 	return data;
 fail:
 	local_irq_restore(flags);
+fail1:
 	sdiohal_err("alloc mem fail\n");
 	return NULL;
 }
@@ -1123,22 +1098,24 @@ err:
 }
 
 /* for normal dma idle buf */
-void *sdiohal_get_rx_free_buf(unsigned int *alloc_size)
+void *sdiohal_get_rx_free_buf(unsigned int *alloc_size, unsigned int read_len)
 {
 	void *p;
 	unsigned int fragsz;
 
-#if (BITS_PER_LONG > 32) || (PAGE_SIZE >= 65536)
-	fragsz = SDIOHAL_RX_RECVBUF_LEN;
+	/* fragsz need to be 1024 aligned */
+	fragsz = roundup(read_len, 1024);
 
-#else
-	fragsz = SDIOHAL_32_BIT_RX_RECVBUF_LEN;
-#endif
+/*
+ * GFP_ATOMIC is not sleep forever, requirement is high;
+ * GFP_KERNEL is nornal way, allow sleep;
+ *__GFP_COLD
+ */
 	p = sdiohal_alloc_frag(fragsz,
 #if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-			       GFP_ATOMIC,
+			       GFP_KERNEL,
 #else
-			       GFP_ATOMIC | __GFP_COLD,
+			       GFP_KERNEL,
 #endif
 			       1, alloc_size);
 
@@ -1436,17 +1413,11 @@ static int sdiohal_dtbs_buf_init(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
 
-	p_data->dtbs_buf = sdiohal_alloc_frag(MAX_MBUF_SIZE,
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-					      GFP_ATOMIC,
-#else
-					      GFP_ATOMIC | __GFP_COLD,
-#endif
-					      0, NULL);
-	if (!p_data->dtbs_buf)
+	p_data->dtbs_buf = kzalloc(MAX_MBUF_SIZE, GFP_KERNEL);
+	if (!p_data->dtbs_buf) {
+		sdiohal_err("dtbs buf alloc fail\n");
 		return -ENOMEM;
-
-	WARN_ON(((unsigned long int)p_data->dtbs_buf) % 64);
+	}
 
 	return 0;
 }
@@ -1454,17 +1425,8 @@ static int sdiohal_dtbs_buf_init(void)
 static int sdiohal_dtbs_buf_deinit(void)
 {
 	struct sdiohal_data_t *p_data = sdiohal_get_data();
-	int order;
 
-	if (!p_data->dtbs_buf)
-		return -ENOMEM;
-
-#if (BITS_PER_LONG > 32) || (PAGE_SIZE >= 65536)
-	order = SDIOHAL_FRAG_PAGE_MAX_ORDER;
-#else
-	order = SDIOHAL_FRAG_PAGE_MAX_ORDER_32_BIT;
-#endif
-	free_pages((unsigned long)p_data->dtbs_buf, order);
+	kfree(p_data->dtbs_buf);
 	p_data->dtbs_buf = NULL;
 
 	return 0;

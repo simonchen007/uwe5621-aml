@@ -10,7 +10,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#include <linux/syscalls.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
@@ -92,7 +92,7 @@ struct gpio_config {
 };
 #endif
 
-#define WCN_FW_MAX_PATH_NUM	3
+#define WCN_FW_MAX_PATH_NUM	4
 /* path of cp2 firmware. */
 #ifdef CONFIG_CUSTOMIZE_UNISOC_FW_PATH
 #define UNISOC_FW_PATH_DEFAULT CONFIG_CUSTOMIZE_UNISOC_FW_PATH
@@ -102,7 +102,8 @@ struct gpio_config {
 static char *wcn_fw_path[WCN_FW_MAX_PATH_NUM] = {
 	UNISOC_FW_PATH_DEFAULT,		/* most of projects */
 	"/vendor/etc/firmware/",	/* allwinner h6/h616... */
-	"/lib/firmware/"		/* allwinner r328... */
+	"/lib/firmware/",		/* allwinner r328... */
+	"/vendor/firmware/"
 };
 #define WCN_FW_NAME	"wcnmodem.bin"
 #define GNSS_FW_NAME	"gnssmodem.bin"
@@ -914,12 +915,10 @@ static char *load_firmware_data_path(const char *path, loff_t offset,
 			break;
 	}
 	if (IS_ERR(file)) {
-		WCN_ERR("%s: open file %s error\n",
-			__func__, path);
+		WCN_DEBUG("%s: open file %s error\n", __func__, path);
 		return NULL;
 	}
-	WCN_DEBUG("marlin %s open image file sucessfully\n",
-		  __func__);
+	WCN_DEBUG("marlin %s open image file sucessfully\n", __func__);
 	size = imag_size;
 	buffer = vmalloc(size);
 	if (!buffer) {
@@ -1107,9 +1106,8 @@ static int marlin_firmware_parse_image(struct marlin_firmware *mfirmware)
 {
 	int offset = 0;
 	int size = 0;
-#ifndef CONFIG_WCN_RESUME_POWER_DOWN
 	int old_mfirmware_size = mfirmware->size;
-#endif
+
 	if (bin_magic_is(mfirmware->data, IMG_HEAD_MAGIC)) {
 		const struct imageinfo *info;
 
@@ -1284,75 +1282,35 @@ void wcn_gnss_ops_unregister(void)
 {
 	gnss_ops = NULL;
 }
+static int gnss_download_firmware(void) {
 
-static char *gnss_load_firmware_data(unsigned long int imag_size)
-{
 	char *buf;
-
-	MDBG_LOG("%s entry\n", __func__);
+	int err;
+	unsigned int load_fw_cnt = 0;
+	
+	buf = marlin_dev->write_buffer;
+reload:
+	WCN_DEBUG("%s %d.load from %s\n", __func__, load_fw_cnt + 1, GNSS_FIRMWARE_PATH);
 	if (gnss_ops && (gnss_ops->set_file_path))
 		gnss_ops->set_file_path(&GNSS_FIRMWARE_PATH[0]);
 	else
 		WCN_ERR("%s gnss_ops set_file_path error\n", __func__);
-	buf = load_firmware_data_path(GNSS_FIRMWARE_PATH, 0, imag_size);
 
-	return buf;
-}
+	buf = load_firmware_data_path(GNSS_FIRMWARE_PATH, 0, GNSS_FIRMWARE_MAX_SIZE);
 
-static int gnss_download_from_partition(void)
-{
-	int err;
-	unsigned long int imgpack_size, img_size;
-	char *buffer = NULL;
-	char *temp = NULL;
-
-	img_size = imgpack_size =  GNSS_FIRMWARE_MAX_SIZE;
-	WCN_INFO("GNSS %s entry\n", __func__);
-	temp = buffer = gnss_load_firmware_data(imgpack_size);
-	if (!buffer) {
-		WCN_INFO("%s gnss buff is NULL\n", __func__);
-		return -1;
+	if(!buf) {
+		++load_fw_cnt;
+		if(load_fw_cnt < WCN_FW_MAX_PATH_NUM) {
+			sprintf(GNSS_FIRMWARE_PATH, "%s%s", \
+					wcn_fw_path[load_fw_cnt], GNSS_FW_NAME);
+			goto reload;
+		}
 	}
 
-	err = sprdwcn_bus_direct_write_dispack(GNSS_CP_START_ADDR, buffer,
-			img_size, PACKET_SIZE);
-	vfree(temp);
-	if (!err)
-		WCN_INFO("%s gnss download firmware finish\n", __func__);
-
-	return err;
-}
-
-static int gnss_download_firmware(void)
-{
-	const struct firmware *firmware;
-	char *buf;
-	int err;
-
-	if (marlin_dev->is_gnss_in_sysfs == 1) {
-		err = gnss_download_from_partition();
-		return err;
-	}
-
-	WCN_INFO("%s start from /system/etc/firmware/\n", __func__);
-	buf = marlin_dev->write_buffer;
-	err = request_firmware(&firmware, GNSS_FW_NAME, NULL);
-	if (err < 0) {
-		WCN_ERR("%s no find %s err:%d(ignore)\n",
-			__func__, GNSS_FW_NAME, err);
-		marlin_dev->is_gnss_in_sysfs = 1;
-		err = gnss_download_from_partition();
-
-		return err;
-	}
-
-	err = sprdwcn_bus_direct_write_dispack(GNSS_CP_START_ADDR,
-			firmware->data, firmware->size, PACKET_SIZE);
-	if (!err)
-		WCN_INFO("%s successfully through request_firmware!\n",
-				__func__);
-	release_firmware(firmware);
-	WCN_INFO("%s successfully through request_firmware!\n", __func__);
+	err = sprdwcn_bus_direct_write_dispack(GNSS_CP_START_ADDR, \
+			buf, GNSS_FIRMWARE_MAX_SIZE, PACKET_SIZE);
+	if (err)
+		WCN_INFO("%s download error\n", __func__);
 
 	return err;
 }
@@ -1682,6 +1640,8 @@ static int marlin_parse_dt(struct platform_device *pdev)
 #else
 	sprintf(BTWF_FIRMWARE_PATH, "%s%s", wcn_fw_path[0], WCN_FW_NAME);
 	WCN_DEBUG("btwf firmware path is %s\n", BTWF_FIRMWARE_PATH);
+	sprintf(GNSS_FIRMWARE_PATH, "%s%s", wcn_fw_path[0], GNSS_FW_NAME);
+	WCN_DEBUG("gnss firmware path is %s\n", GNSS_FIRMWARE_PATH);
 #endif /* end of CONFIG_WCN_PARSE_DTS */
 
 #ifdef CONFIG_WCN_PARSE_DTS
@@ -2069,10 +2029,18 @@ static void marlin_send_sdio_config_to_cp_vendor(void)
 		sdio_cfg.cfg.sdio_irq_type = 1;
 		WCN_INFO("sdio_config irq:[inband]\n");
 	} else {
-#if defined(CONFIG_AML_BOARD)
-		sdio_cfg.cfg.sdio_irq_type = 3;
-		WCN_INFO("sdio_config sdio_irq:[gpio13]\n");
+#ifdef CONFIG_CUSTOMIZE_SDIO_IRQ_TYPE
+		sdio_cfg.cfg.sdio_irq_type = CONFIG_CUSTOMIZE_SDIO_IRQ_TYPE;
+		if (sdio_cfg.cfg.sdio_irq_type == 0)
+			WCN_INFO("sdio_config sdio_irq:[gpio1]\n");
+		else if (sdio_cfg.cfg.sdio_irq_type == 2)
+			WCN_INFO("sdio_config sdio_irq:[pubint]\n");
+		else if (sdio_cfg.cfg.sdio_irq_type == 3)
+			WCN_INFO("sdio_config sdio_irq:[esmd3]\n");
+		else
+			WCN_INFO("sdio_config sdio_irq:[error]\n");
 #else
+		sdio_cfg.cfg.sdio_irq_type = 0;
 		WCN_INFO("sdio_config sdio_irq:[gpio1]\n");
 #endif
 	}
@@ -2666,31 +2634,6 @@ void marlin_chip_en(bool enable, bool reset)
 }
 EXPORT_SYMBOL_GPL(marlin_chip_en);
 
-void marlin_cp2_reset(void)
-{
-	WCN_INFO("1. chip power off, power state: %ld\n", marlin_dev->power_state);
-	/*if all is close, we don't need do anything*/
-	if(0 == marlin_dev->power_state)
-		return;
-	WCN_INFO("2. chip power off\n");
-	sprdwcn_bus_set_carddump_status(false);
-	marlin_chip_en(false, false);
-	msleep(100);
-	WCN_INFO("3. chip power on\n");
-	marlin_chip_en(true, false);
-	WCN_INFO("4. card rescan\n");
-	marlin_reset_reg();
-	WCN_INFO("5. download firmware\n");
-	marlin_schedule_download_wq();
-	marlin_dev->wifi_need_download_ini_flag = 1;
-#ifdef CONFIG_WCN_LOOPCHECK
-	WCN_INFO("6. restart loopcheck\n");
-	start_loopcheck();
-#endif
-	WCN_INFO("[%s], cp2 reset finish..........\n", __func__);
-}
-EXPORT_SYMBOL_GPL(marlin_cp2_reset);
-
 int set_cp_mem_status(int subsys, int val)
 {
 	int ret;
@@ -2829,8 +2772,11 @@ int find_firmware_path(void)
 {
 	int ret;
 	int pre_len;
-
+#ifdef CONFIG_WCN_GNSS
+	if ((strlen(BTWF_FIRMWARE_PATH) != 0) || (strlen(GNSS_FIRMWARE_PATH) != 0))
+#else
 	if (strlen(BTWF_FIRMWARE_PATH) != 0)
+#endif
 		return 0;
 
 	ret = parse_firmware_path(BTWF_FIRMWARE_PATH);
@@ -2840,11 +2786,8 @@ int find_firmware_path(void)
 	}
 	WCN_INFO("BTWF path is %s\n", BTWF_FIRMWARE_PATH);
 	pre_len = strlen(BTWF_FIRMWARE_PATH) - strlen("wcnmodem");
-	memcpy(GNSS_FIRMWARE_PATH,
-		BTWF_FIRMWARE_PATH,
-		strlen(BTWF_FIRMWARE_PATH));
-	memcpy(&GNSS_FIRMWARE_PATH[pre_len], "gnssmodem",
-		strlen("gnssmodem"));
+	memcpy(GNSS_FIRMWARE_PATH, BTWF_FIRMWARE_PATH, strlen(BTWF_FIRMWARE_PATH));
+	memcpy(&GNSS_FIRMWARE_PATH[pre_len], "gnssmodem", strlen("gnssmodem"));
 	GNSS_FIRMWARE_PATH[pre_len + strlen("gnssmodem")] = '\0';
 	WCN_INFO("GNSS path is %s\n", GNSS_FIRMWARE_PATH);
 
@@ -3283,9 +3226,7 @@ static int marlin_set_power(int subsys, int val)
 		first_call_flag++;
 		if (first_call_flag == 1) {
 			WCN_INFO("(marlin2+ge2)waiting ge2 download finish\n");
-			timeleft
-				= wait_for_completion_timeout(
-				&ge2_completion, 12*HZ);
+			timeleft = wait_for_completion_timeout(&ge2_completion, 12*HZ);
 			if (!timeleft)
 				WCN_ERR("wait ge2 timeout\n");
 		}
@@ -3595,10 +3536,10 @@ int marlin_get_module_status(void)
 		test_bit(MARLIN_FM, &marlin_dev->power_state) ||
 		test_bit(MARLIN_WIFI, &marlin_dev->power_state) ||
 		test_bit(MARLIN_MDBG, &marlin_dev->power_state) ||
+		test_bit(MARLIN_GNSS, &marlin_dev->power_state) ||
 		test_bit(WCN_AUTO, &marlin_dev->power_state))
 		return 1;
-	else
-		return 0;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(marlin_get_module_status);
 
@@ -3614,6 +3555,11 @@ EXPORT_SYMBOL_GPL(is_first_power_on);
 int cali_ini_need_download(enum marlin_sub_sys subsys)
 {
 	unsigned int pd_wifi_st = 0;
+
+#ifdef CONFIG_AW_BOARD
+	/*FIX SPCSS00757820, wifi-bt on/off frequently & quickly, ini need download but not*/
+	return 1;
+#endif
 
 #ifdef CONFIG_MEM_PD
 	pd_wifi_st = mem_pd_wifi_state();
@@ -4048,14 +3994,40 @@ static struct platform_device uwe_device = {
 		.release = uwe_release,
 	}
 };
+
+#ifdef CONFIG_WCN_GNSS
+static void gnss_common_ctl_release(struct device *dev) {
+	WCN_INFO("[%s]enter\n", __func__);
+}
+static struct platform_device gnss_common_ctl_device = {
+	.name = "gnss_common_ctl",
+	.dev = {
+		.release = gnss_common_ctl_release,
+	}
+};
+#endif
 #endif
 
+#ifdef CONFIG_WCN_GNSS
+extern int __init gnss_common_ctl_init(void);
+extern void __exit gnss_common_ctl_exit(void);
+extern int __init gnss_pmnotify_ctl_init(void);
+extern void __exit gnss_pmnotify_ctl_cleanup(void);
+extern int __init gnss_module_init(void);
+extern void __exit gnss_module_exit(void);
+#endif
 static int __init marlin_init(void)
 {
 	WCN_INFO("marlin_init entry!\n");
 
 #ifndef CONFIG_WCN_PARSE_DTS
 	platform_device_register(&uwe_device);
+#endif
+#ifdef CONFIG_WCN_GNSS
+	platform_device_register(&gnss_common_ctl_device);
+	gnss_common_ctl_init();
+	gnss_pmnotify_ctl_init();
+	gnss_module_init();
 #endif
 	return platform_driver_register(&marlin_driver);
 }
@@ -4071,6 +4043,12 @@ static void __exit marlin_exit(void)
 
 #ifndef CONFIG_WCN_PARSE_DTS
 	platform_device_unregister(&uwe_device);
+#endif
+#ifdef CONFIG_WCN_GNSS
+	gnss_common_ctl_exit();
+	gnss_pmnotify_ctl_cleanup();
+	gnss_module_exit();
+	platform_device_register(&gnss_common_ctl_device);
 #endif
 	platform_driver_unregister(&marlin_driver);
 

@@ -1749,7 +1749,11 @@ void sprdwl_tx_delba(struct sprdwl_intf *intf,
 
 int sprdwl_notifier_boost(struct notifier_block *nb, unsigned long event, void *data)
 {
+#if KERNEL_VERSION(5, 4, 19) <= LINUX_VERSION_CODE
+	struct cpufreq_policy_data *policy = data;
+#else
 	struct cpufreq_policy *policy = data;
+#endif
 	unsigned long min_freq;
 	unsigned long max_freq = policy->cpuinfo.max_freq;
 	struct sprdwl_intf *intf = get_intf();
@@ -1760,7 +1764,11 @@ int sprdwl_notifier_boost(struct notifier_block *nb, unsigned long event, void *
 
 	boost = intf->boost;
 
+#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
+	if (event != CPUFREQ_CREATE_POLICY)
+#else
 	if (event != CPUFREQ_ADJUST)
+#endif
 		return NOTIFY_DONE;
 
 	min_freq = boost ? 1200000 : 400000;

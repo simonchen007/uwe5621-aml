@@ -27,7 +27,10 @@ function do_make_sdk()
 	PATH_INI=$6
 	if [ ${PLAT_NAME} = "A100" ]; then
 		echo "BT2"
-		PATH_BT2=$7	
+		PATH_BT2=$7
+	elif [ ${PLAT_NAME} = "MV300" ]; then
+		echo "AML path"
+		PATH_BT_AMLOGIC_PLATFORM_PATCH=$7
 	fi
 	echo "pwd is $WORK_DIR"
 
@@ -59,6 +62,7 @@ function do_make_sdk()
 		cp -r $PATH_BT2/ $SDK_PATH/BT
 	else
 		cp -r $PATH_BT1/ $SDK_PATH/BT
+		cp -r $PATH_BT_AMLOGIC_PLATFORM_PATCH/ $SDK_PATH/BT_AMLOGIC_PLATFORM_PATCH
 		echo "do_make_sdk copy bt finish"
 		#clean unuseless files
 		rm -rf $SDK_PATH/BT/driver/.tmp_versions
@@ -108,7 +112,8 @@ elif [ $1 = "MV300" ]; then
 	SRC_WIFI=${PLATFORM_DIR}/device/hisilicon/bigfish/sdk/source/component/wifi/drv/sdio_uwe5621/unisocwifi
 	SRC_BT1=${PLATFORM_DIR}/device/hisilicon/bigfish/bluetooth/uwe5621/
 	SRC_INI=${PLATFORM_DIR}/device/hisilicon/bigfish/bluetooth/uwe5621/driver/fw/uwe5621
-	do_make_sdk $PLATFORM $PLATFORM_DIR $SRC_BSP $SRC_WIFI $SRC_BT1 $SRC_INI	
+	SRC_BT_AMLOGIC_PLATFORM_PATCH=${PLATFORM_DIR}/device/hisilicon/bigfish/bluetooth/amlogic_platform_patch
+	do_make_sdk $PLATFORM $PLATFORM_DIR $SRC_BSP $SRC_WIFI $SRC_BT1 $SRC_INI $SRC_BT_AMLOGIC_PLATFORM_PATCH
 else
 	echo "Invalid platform"
 fi

@@ -749,13 +749,21 @@ void update_wmmac_edcaftime_timeout(unsigned long data)
 	}
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+void update_wmmac_vo_timeout(struct timer_list *t)
+#else
 void update_wmmac_vo_timeout(unsigned long data)
+#endif
 {
 	g_wmmac_usedtime[AC_VO] = g_wmmac_admittedtime[AC_VO];
 	g_wmmac_available[AC_VO] = false;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+void update_wmmac_vi_timeout(struct timer_list *t)
+#else
 void update_wmmac_vi_timeout(unsigned long data)
+#endif
 {
 	g_wmmac_usedtime[AC_VI] = g_wmmac_admittedtime[AC_VI];
 	g_wmmac_available[AC_VI] = false;

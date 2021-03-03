@@ -369,8 +369,11 @@ static struct net_device_stats *sprdwl_get_stats(struct net_device *ndev)
 {
 	return &ndev->stats;
 }
-
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static void sprdwl_tx_timeout(struct net_device *ndev, unsigned int txqueue)
+#else
 static void sprdwl_tx_timeout(struct net_device *ndev)
+#endif
 {
 	wl_ndev_log(L_DBG, ndev, "%s\n", __func__);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)

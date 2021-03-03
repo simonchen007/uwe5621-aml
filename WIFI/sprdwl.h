@@ -35,6 +35,7 @@
 #include <linux/dcache.h>
 #include <linux/udp.h>
 #include <linux/version.h>
+#include "wcn_wrapper.h"
 
 #include "cfg80211.h"
 #include "cmdevt.h"

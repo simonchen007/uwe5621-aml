@@ -219,7 +219,7 @@ void sprdwl_event_tdls_flow_count(struct sprdwl_vif *vif, u8 *data, u16 len)
 			peer_info->timer, peer_info->da);
 
 		kt = ktime_get();
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 		intf->tdls_flow_count[i].start_mstime =
 			(u32)(div_u64(kt, NSEC_PER_MSEC));
 #else
@@ -255,7 +255,7 @@ count_it:
 	if (new_threshold != 0)
 		intf->tdls_flow_count[i].threshold = new_threshold;
 	kt = ktime_get();
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 	msec = (u32)(div_u64(kt, NSEC_PER_MSEC));
 #else
 	msec = (u32)(div_u64(kt.tv64, NSEC_PER_MSEC));

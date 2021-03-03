@@ -51,10 +51,6 @@ ccflags-y += -DSYNC_DISCONNECT
 #ccflags-y += -DTCP_ACK_DROP_SUPPORT
 #ccflags-y += -DWOW_SUPPORT -DCONFIG_PM
 
-ifeq ($(CFG_HI_WIFI_DEVICE_UWE5623_USB),y)
-ccflags-y += -DDISABLE_CREDIT_VIA_DATA
-endif
-
 #####module name ###
 obj-m += $(MODULE_NAME).o
 

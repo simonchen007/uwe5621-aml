@@ -23,7 +23,7 @@
 #include <linux/seq_file.h>
 #include <linux/version.h>
 #include <linux/wait.h>
-#if KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
+#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 #include <linux/sched/clock.h>
 #endif
 #include <wcn_bus.h>
@@ -113,7 +113,6 @@ void mdbg_assert_interface(char *str)
 #else
 	WCN_ERR("%s,%s reset & notify...\n", __func__, str);
 	marlin_reset_notify_call(MARLIN_CP2_STS_ASSERTED);
-	marlin_cp2_reset();
 	msleep(1000);
 	marlin_reset_notify_call(MARLIN_CP2_STS_READY);
 #endif
@@ -173,7 +172,6 @@ static int mdbg_assert_read(int channel, struct mbuf_t *head,
 #endif
 		WCN_ERR("chip reset & notify every subsystem...\n");
 		marlin_reset_notify_call(MARLIN_CP2_STS_ASSERTED);
-		marlin_cp2_reset();
 		msleep(1000);
 		marlin_reset_notify_call(MARLIN_CP2_STS_READY);
 #endif
@@ -420,6 +418,15 @@ static int mdbg_snap_shoot_seq_open(struct inode *inode, struct file *file)
 	return seq_open(file, &mdbg_snap_shoot_seq_ops);
 }
 
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static const struct proc_ops mdbg_snap_shoot_seq_fops = {
+	.proc_open = mdbg_snap_shoot_seq_open,
+	.proc_read = seq_read,
+	.proc_write = mdbg_snap_shoot_seq_write,
+	.proc_lseek = seq_lseek,
+	.proc_release = seq_release,
+};
+#else
 static const struct file_operations mdbg_snap_shoot_seq_fops = {
 	.open = mdbg_snap_shoot_seq_open,
 	.read = seq_read,
@@ -427,6 +434,7 @@ static const struct file_operations mdbg_snap_shoot_seq_fops = {
 	.llseek = seq_lseek,
 	.release = seq_release
 };
+#endif
 
 static int mdbg_proc_open(struct inode *inode, struct file *filp)
 {
@@ -750,6 +758,12 @@ static ssize_t mdbg_proc_write(struct file *filp,
 		return count;
 	}
 
+	if (strncmp(mdbg_proc->write_buf, "startgps", 7) == 0) {
+		start_marlin(MARLIN_GNSS);
+		return count;
+	}
+
+
 
 	/* unit of loglimitsize is MByte. */
 	if (strncmp(mdbg_proc->write_buf, "loglimitsize=",
@@ -1005,6 +1019,15 @@ static unsigned int mdbg_proc_poll(struct file *filp, poll_table *wait)
 	return mask;
 }
 
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static const struct proc_ops mdbg_proc_fops = {
+	.proc_open = mdbg_proc_open,
+	.proc_release = mdbg_proc_release,
+	.proc_read = mdbg_proc_read,
+	.proc_write = mdbg_proc_write,
+	.proc_poll = mdbg_proc_poll,
+};
+#else
 static const struct file_operations mdbg_proc_fops = {
 	.open		= mdbg_proc_open,
 	.release	= mdbg_proc_release,
@@ -1012,6 +1035,7 @@ static const struct file_operations mdbg_proc_fops = {
 	.write		= mdbg_proc_write,
 	.poll		= mdbg_proc_poll,
 };
+#endif
 
 int mdbg_memory_alloc(void)
 {

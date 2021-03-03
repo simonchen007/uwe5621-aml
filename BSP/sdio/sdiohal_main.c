@@ -1915,7 +1915,11 @@ static int sdiohal_probe(struct sdio_func *func,
 		return -1;
 	}
 	sdiohal_debug("get host ok!!!");
-
+#ifdef CONFIG_HISI_BOARD
+/* max_blk_count default is 256*/
+/* to£¨MAX_CHAIN_NODE_NUM * MAX_MBUF_SIZE£©/(CONFIG_SDIO_BLKSIZE) < max_blk_count */
+		p_data->sdio_dev_host->max_blk_count = 512;
+#endif
 	atomic_set(&p_data->xmit_start, 1);
 
 	if (!p_data->pwrseq) {
