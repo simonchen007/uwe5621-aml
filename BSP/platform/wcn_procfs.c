@@ -40,7 +40,7 @@
 
 #define CONFIG_CP2_ASSERT       (1)
 
-u32 wcn_print_level = WCN_DEBUG_OFF;
+u32 wcn_print_level = WCN_DEBUG_ON;//WCN_DEBUG_OFF;
 
 static u32 g_dumpmem_switch =  1;
 static u32 g_loopcheck_switch;
